@@ -3,12 +3,18 @@ using System.Collections.Generic;
 
 namespace JsInteropDemo
 {
+    public class ListItem
+    {
+        public string Name { get; set; }
+    }
+
     // Jednoduché DTO, které budeme vytvářet v JavaScriptu a používat v C#
     public class Receipt
     {
         public string DocumentId { get; set; }
         public string FileName { get; set; }
         public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+        public List<ListItem> Items { get; set; }
 
         public Receipt() { }
 
