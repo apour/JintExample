@@ -9,8 +9,69 @@ using System;
 
 namespace JsInteropDemo
 {
+
+    public class Person
+    {
+        public string? Name { get; set; }
+        public Address? Address { get; set; }
+        public List<Phone> Phones { get; set; } = new();
+        public Dictionary<string, string> Tags { get; set; } = new();
+        public Person? BestFriend { get; set; } // to show cycles
+    }
+
+    public class Address
+    {
+        public string? City { get; set; }
+        public string? Street { get; set; }
+    }
+
+    public class Phone
+    {
+        public string? Type { get; set; }
+        public string? Number { get; set; }
+    }
+    
     class Program
     {
+        private static void ExpandoGraphExample()
+        {
+            var alice = new Person
+            {
+                Name = "Alice",
+                Address = new Address { City = "Hradec Králové", Street = "Main 1" },
+                Phones = new List<Phone>
+                {
+                    new Phone { Type = "mobile", Number = "+420 777 000 111" },
+                    new Phone { Type = "work", Number = "+420 495 000 222" }
+                },
+                Tags = new Dictionary<string, string> { ["role"] = "developer" }
+            };
+            var bob = new Person { Name = "Bob" };
+            alice.BestFriend = bob;
+            bob.BestFriend = alice; // cycle
+
+            // Attach a "Run" action to every node that prints path + type
+            dynamic dyn = ExpandoGraph.ToExpandoWithAction(
+                alice,
+                actionName: "Run",
+                actionFactory: (obj, path) => () =>
+                {
+                    Console.WriteLine($"RUN @ {path} (Type: {obj?.GetType().Name ?? "null"})");
+                },
+                includeNulls: false
+            );
+
+            // Call the action on various nodes:
+            dyn.Run();                           // Root
+            dyn.Address.Run();                   // Root.Address
+            dyn.Phones[0].Run();                 // Root.Phones[0]
+            dyn.BestFriend.Run();                // Root.BestFriend
+            Console.WriteLine(dyn.Tags.role);    // "developer"
+
+            // If any node already had a "Run" property, we avoid collision (e.g., "Run_1")
+            // You can call that as well: dyn.Run_1();
+        }
+        
         private static StepMode OnBreak(object? sender, DebugInformation e)
         {
             Console.WriteLine($"BREAK at {e.Location.SourceFile}:{e.Location.Start.Line}:{e.Location.Start.Column}");
@@ -100,6 +161,24 @@ namespace JsInteropDemo
             // Add a runtime Test() method that writes to the console
             
             qiifWrapper.Test = new Action(() => Console.WriteLine("[Runtime Test] called on qiifDataObject"));
+            qiifWrapper.createArray = new Func<string, object?>((string typeName) =>
+            {
+                Type? foundType;
+                try
+                {
+                    foundType = Type.GetType("JsonQiifConverterGenerated.Qiif." + typeName);
+                }
+                catch (Exception e)
+                {
+                    return null;
+                }
+                if (foundType == null)
+                    return null;
+                
+                var concreteType = typeof(List<>).MakeGenericType(foundType);
+                var instance = Activator.CreateInstance(concreteType);
+                return instance;
+            });
             // Forward createArray calls to the underlying CLR instance method (if present)
             //qiifWrapper.createArray = new Func<string, object>(qiifDataObject.createArray);
             
@@ -170,28 +249,16 @@ namespace JsInteropDemo
             // Instead of assigning a plain JS array (which can't be converted to List<DocumentReference>),
             // call the CLR helper to create a strongly-typed List<DocumentReference> and assign it.
             jsCode = " "
-                     //+ " qiifDataObject.Test(); var notes = qiifDataObject.createArray('note'); return notes.Count;";
-                     + "var list = createArray('DocumentReference'); list.push({ Iri: 'test' }); list.push({ Iri: 'test2' }); return list.length;";
+                     + " qiifDataObject.Test(); var notes = qiifDataObject.createArray('DocumentReference'); return notes.Count;";
+                     //+ "var list = createArray('DocumentReference'); list.push({ Iri: 'test' }); list.push({ Iri: 'test2' }); return list.length;";
  //"qiifDataObject.TradeTransaction.Evidence.OtherGroup = createDocumentReferenceArray();";
              
 
             try
             {
-                var testQiifDataObject = new QiifDataObject();
-                testQiifDataObject.InvoiceDocument = new InvoiceDocument();
-                testQiifDataObject.InvoiceDocument.DocumentId = new Id { Identifier = "15A"};
+                CreateInstanceAndPruneRecursive();
+                ExpandoGraphExample();
 
-                testQiifDataObject.TradeTransaction = new TradeTransaction();
-                testQiifDataObject.TradeTransaction.Participant = new Participant();
-                testQiifDataObject.TradeTransaction.LineItemGroup = new List<LineItem>();
-                testQiifDataObject.TradeTransaction.LineItemGroup.Add(new LineItem { LineId = new Id { Identifier = "lineId1"}});
-                
-                ObjectGraphInitializer.EnsureCollectionsHaveAtLeastOneItem(testQiifDataObject);
-                
-                // Prune: removes purely default-like nodes, no marking
-                ObjectGraphPruner.PruneDefaults(testQiifDataObject, nullEmptyCollections: true);
-
-                
                 var res = engine.Execute(jsCode);
 
                 var field = typeof(Engine).GetField("_completionValue",
@@ -227,6 +294,23 @@ namespace JsInteropDemo
             {
                 Console.WriteLine($"[Error] {ex}");
             }
+        }
+
+        private static void CreateInstanceAndPruneRecursive()
+        {
+            var testQiifDataObject = new QiifDataObject();
+            testQiifDataObject.InvoiceDocument = new InvoiceDocument();
+            testQiifDataObject.InvoiceDocument.DocumentId = new Id { Identifier = "15A"};
+
+            testQiifDataObject.TradeTransaction = new TradeTransaction();
+            testQiifDataObject.TradeTransaction.Participant = new Participant();
+            testQiifDataObject.TradeTransaction.LineItemGroup = new List<LineItem>();
+            testQiifDataObject.TradeTransaction.LineItemGroup.Add(new LineItem { LineId = new Id { Identifier = "lineId1"}});
+                
+            ObjectGraphInitializer.EnsureCollectionsHaveAtLeastOneItem(testQiifDataObject);
+                
+            // Prune: removes purely default-like nodes, no marking
+            ObjectGraphPruner.PruneDefaults(testQiifDataObject, nullEmptyCollections: true);
         }
     }
 }
