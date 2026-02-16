@@ -10,6 +10,24 @@ using System;
 namespace JsInteropDemo
 {
 
+    public class Order
+    {
+        public string? Number { get; set; }
+        public Customer? Customer { get; set; }
+        public List<OrderItem> Items { get; set; } = new(); // List<T> -> gets actions
+        public List<string> Notes { get; set; } = new();    // List<T> -> gets actions
+    }
+
+    public class Customer
+    {
+        public string? Name { get; set; }
+        public Address? Address { get; set; }
+        public List<Contact> Contacts { get; set; } = new(); // List<T> -> gets actions
+    }
+    
+    public class Contact { public string? Email { get; set; } }
+    public class OrderItem { public string? Sku { get; set; } public int Qty { get; set; } }
+
     public class Person
     {
         public string? Name { get; set; }
@@ -33,6 +51,39 @@ namespace JsInteropDemo
     
     class Program
     {
+        private static dynamic ExpandoGraphArrayOnlyExample(QiifDataObject qiifDataObject)
+        {
+            // var order = new Order
+            // {
+            //     Number = "SO-1001",
+            //     Customer = new Customer { Name = "Acme", Address = new Address { City = "Hradec Králové" } }
+            // };
+
+            dynamic dyn = ExpandoWithListActions.ToExpando(qiifDataObject);
+
+            //dyn.TradeTransaction.Evidence.AddTo_OtherGroup(new DocumentReference());
+                
+            // // Lists are preserved as List<object?> so indexing works:
+            // Console.WriteLine(dyn.Items.Count); // 0
+            //
+            // // The parent node gained actions for each List<T> property:
+            // dyn.AddDefaultTo_Items(); // adds default OrderItem { Sku=null, Qty=0 }
+            // Console.WriteLine(dyn.Items.Count); // 1
+            //
+            // // Add a specific item:
+            // dyn.AddTo_Items(new OrderItem { Sku = "ABC", Qty = 3 });
+            // Console.WriteLine(dyn.Items[1].Sku); // "ABC"
+            //
+            // // Nested list (Customer.Contacts) also has actions on the nested parent node:
+            // dyn.Customer.AddDefaultTo_Contacts();
+            // Console.WriteLine(dyn.Customer.Contacts.Count); // 1
+            //
+            // // String list also works:
+            // dyn.AddTo_Notes("urgent");
+            // Console.WriteLine(dyn.Notes[0]); // "urgent"
+            return dyn;
+        }
+        
         private static void ExpandoGraphExample()
         {
             var alice = new Person
@@ -249,16 +300,23 @@ namespace JsInteropDemo
             // Instead of assigning a plain JS array (which can't be converted to List<DocumentReference>),
             // call the CLR helper to create a strongly-typed List<DocumentReference> and assign it.
             jsCode = " "
-                     + " qiifDataObject.Test(); var notes = qiifDataObject.createArray('DocumentReference'); return notes.Count;";
+                     + " qiifDataObjectDynamic.TradeTransaction.Evidence.CreateArray_OtherGroup(); " 
+                     + " qiifDataObjectDynamic.TradeTransaction.Evidence.OtherGroup.push(new DocumentReference()); "
+                     + " return qiifDataObjectDynamic.TradeTransaction.Evidence.OtherGroup.length;";
+                     //+ " qiifDataObject.Test(); var notes = qiifDataObject.createArray('DocumentReference'); return notes.Count;";
                      //+ "var list = createArray('DocumentReference'); list.push({ Iri: 'test' }); list.push({ Iri: 'test2' }); return list.length;";
  //"qiifDataObject.TradeTransaction.Evidence.OtherGroup = createDocumentReferenceArray();";
              
 
             try
             {
-                CreateInstanceAndPruneRecursive();
-                ExpandoGraphExample();
-
+                //CreateInstanceAndPruneRecursive();
+                //ExpandoGraphExample();
+                qiifDataObject.TradeTransaction = new TradeTransaction();
+                qiifDataObject.TradeTransaction.Evidence = new Evidence();
+                var qiifWrapperDynamic = ExpandoGraphArrayOnlyExample(qiifDataObject);
+                engine.SetValue("qiifDataObjectDynamic", qiifWrapperDynamic);
+                
                 var res = engine.Execute(jsCode);
 
                 var field = typeof(Engine).GetField("_completionValue",
@@ -277,6 +335,10 @@ namespace JsInteropDemo
                 {
                     var value = toObject.Invoke(completionJsValue, null);
                     int n = 5;
+                    n++;
+
+                    QiifDataObject result = new QiifDataObject();
+                    ExpandoBackMapper.UpdateObjectFromExpando(result, qiifWrapperDynamic);
                     n++;
                 }
 
