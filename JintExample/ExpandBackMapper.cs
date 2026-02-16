@@ -27,19 +27,37 @@ public static class ExpandoBackMapper
                 return;
         }
 
-        if (exp is not IDictionary<string, object?> expDict)
-            return;
+        // if (exp is not IDictionary<string, object?> expDict)
+        //     return;
+        
+        Func<string, object?> expDictLookup = key =>
+        {
+            if (exp is IDictionary<string, object?> expDict && expDict.TryGetValue(key, out var value))
+                return value;
+            
+            var expType = exp.GetType();
+            if (expType == typeof(ExpandoObject))
+                return null;
+            var prop = expType.GetProperty(key);
+            if (prop == null)
+                return null; 
+            return prop.GetValue(exp);
+        };
+        CopyProperties(target, visited, expDictLookup);
+    }
 
-        var type = target.GetType();
-
+    private static void CopyProperties(object target, HashSet<object> visited, Func<string, object?> expDictLookup)
+    {
+        Type type = target.GetType();
         // Walk every property in target class
         foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
             if (!prop.CanWrite)
                 continue;
 
-            if (!expDict.TryGetValue(prop.Name, out var expValue))
-                continue;
+            var expValue = expDictLookup.Invoke(prop.Name);
+            // if (!expDict.TryGetValue(prop.Name, out var expValue))
+            //     continue;
 
             var propType = prop.PropertyType;
 

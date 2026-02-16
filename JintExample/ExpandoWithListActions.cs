@@ -125,7 +125,7 @@ public static class ExpandoWithListActions
 
                     // 2) Add dynamic actions to the parent expando for this list:
                     // CreateArray_{PropName}
-                    var createArrayName = $"CreateArray_{prop.Name}";
+                    var createArrayName = $"CreateArray{prop.Name}";
                     dictExp[UniqueName(dictExp, createArrayName)] = (Action<object?>)((item) =>
                     {
                         // ensure underlying list exists
