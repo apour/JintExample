@@ -1,8 +1,5 @@
-using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.Dynamic;
-using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
@@ -143,7 +140,8 @@ public static class ExpandoBackMapper
             }
 
             // ---------- 5) Complex nested object ----------
-            if (expValue is ExpandoObject)
+            // or Fallback: try to assign directly if types are compatible
+            if (expValue is ExpandoObject || propType.IsAssignableFrom(expValue.GetType()))
             {
                 object? nested = prop.GetValue(target);
                 if (nested == null)
